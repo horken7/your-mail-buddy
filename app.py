@@ -7,15 +7,42 @@ from email.utils import parsedate_to_datetime
 from openai import OpenAI
 from pydantic import BaseModel
 import smtplib
-import re
 
-# Configuration using secrets
-IMAP_SERVER = st.secrets["imap_server"]
-EMAIL_ACCOUNT = st.secrets["email_account"]
-PASSWORD = st.secrets["email_password"]
-OPENAI_API_KEY = st.secrets["openai_api_key"]
+# Streamlit app
+st.set_page_config(page_title="Your Email Buddy", layout="wide")
+number_of_emails_to_fetch = 5
+
+# Introductory Text
+st.title("Your Email Buddy")
+st.write(f"""
+This application connects to your email inbox, fetches unread emails, and uses ChatGPT to analyze them. 
+For each email, the app provides an importance score, a short summary, and a draft response. 
+You can send the draft response back to the email sender, which would also mark the email as read in your inbox.
+Due to the limitations of the free OpenAI API, this app is limited to a maximum of {number_of_emails_to_fetch} emails per run.
+An example connection has been provided for you to test the app with dummy data.
+Use this tool to manage your inbox more efficiently and respond to important emails faster.
+GLHF!
+""")
+
+st.sidebar.header("Settings")
+
+# Checkbox for using example connection
+use_example = st.sidebar.checkbox("Use example connection", value=False)
+
+# Configuration parameters
+if use_example:
+    IMAP_SERVER = st.secrets["imap_server"]
+    EMAIL_ACCOUNT = st.secrets["email_account"]
+    PASSWORD = st.secrets["email_password"]
+    OPENAI_API_KEY = st.secrets["openai_api_key"]
+else:
+    IMAP_SERVER = st.sidebar.text_input("IMAP Server", "", help="The address of your email provider's IMAP server. [Learn more](https://support.google.com/mail/answer/7126229).")
+    EMAIL_ACCOUNT = st.sidebar.text_input("Email Account", "", help="Your full email address. For example, 'yourname@gmail.com'.")
+    PASSWORD = st.sidebar.text_input("Password", type="password", help="The password for your email account. If you're using Gmail, you might need an [App Password](https://support.google.com/accounts/answer/185833).")
+    OPENAI_API_KEY = st.sidebar.text_input("OpenAI API Key", type="password", help="Your OpenAI API key. [Get your API key here](https://platform.openai.com/account/api-keys).")
+
+# Initialize OpenAI client
 client = OpenAI(api_key=OPENAI_API_KEY)
-
 
 # Functions
 def connect_to_email():
@@ -54,7 +81,7 @@ def fetch_unread_emails(mail, number_of_emails_to_fetch):
         else:
             email_content = msg.get_payload(decode=True).decode()
         emails.append({
-            'ID': email_id.decode('utf-8'),  # Decode the email ID to string
+            'ID': email_id.decode('utf-8'),
             'From': email_from,
             'To': email_to,
             'Date': email_date,
@@ -125,29 +152,10 @@ def mark_as_read(email_id):
     mail.select('inbox')
     mail.store(email_id, '+FLAGS', '\\Seen')
     mail.logout()
-    print("read")
 
 
-# Streamlit app
-st.set_page_config(page_title="Your Email Buddy", layout="wide")
-
-# Introductory Text
-st.title("Your Email Buddy")
-st.write("""
-This application connects to your email inbox, fetches unread emails, and uses OpenAI to analyze them. 
-For each email, the app provides an importance score, a short summary, and a draft response. 
-Use this tool to manage your inbox more efficiently and respond to important emails faster.
-""")
-
-st.sidebar.header("Settings")
-imap_server = st.sidebar.text_input("IMAP Server", IMAP_SERVER)
-email_account = st.sidebar.text_input("Email Account", EMAIL_ACCOUNT)
-password = st.sidebar.text_input("Password", PASSWORD, type="password")
-api_key = st.sidebar.text_input("OpenAI API Key", OPENAI_API_KEY, type="password")
-number_of_emails_to_fetch = 5
-
+# Streamlit app workflow
 if st.sidebar.button('Go!') or 'already_started' in st.session_state:
-    # Fetch and process emails if not already done
     if 'unread_emails' not in st.session_state:
         with st.spinner("Fetching unread emails..."):
             mail = connect_to_email()
