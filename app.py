@@ -6,11 +6,14 @@ from email.header import decode_header
 from email.utils import parsedate_to_datetime
 from openai import OpenAI
 from pydantic import BaseModel
+import smtplib
+import re
 
-IMAP_SERVER = 'imap.gmail.com'
-EMAIL_ACCOUNT = "yourmailbuddy@gmail.com"
-PASSWORD = ""
-OPENAI_API_KEY = ""
+# Configuration using secrets
+IMAP_SERVER = st.secrets["imap_server"]
+EMAIL_ACCOUNT = st.secrets["email_account"]
+PASSWORD = st.secrets["email_password"]
+OPENAI_API_KEY = st.secrets["openai_api_key"]
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 
@@ -21,15 +24,16 @@ def connect_to_email():
     return mail
 
 
-def fetch_unread_emails(mail):
+def fetch_unread_emails(mail, number_of_emails_to_fetch):
     mail.select('inbox')
     status, data = mail.search(None, 'UNSEEN')
     if status != 'OK':
         st.error('Error fetching emails')
         return []
+
     email_ids = data[0].split()
     emails = []
-    for email_id in email_ids:
+    for email_id in email_ids[:number_of_emails_to_fetch]:
         status, msg_data = mail.fetch(email_id, '(BODY.PEEK[])')
         if status != 'OK':
             st.warning(f'Error fetching email ID: {email_id}')
@@ -50,6 +54,7 @@ def fetch_unread_emails(mail):
         else:
             email_content = msg.get_payload(decode=True).decode()
         emails.append({
+            'ID': email_id.decode('utf-8'),  # Decode the email ID to string
             'From': email_from,
             'To': email_to,
             'Date': email_date,
@@ -69,7 +74,8 @@ def add_importance_and_response(df):
     system_prompt = (
         "Analyze the email content and provide an importance score between 0 and 5, "
         "with 5 being the most important. Draft a response to the email. "
-        "Provide a short and concise one-sentence summary of the email."
+        "Provide a short and concise one-sentence summary of the email. "
+        "Automatically assign a low importance score (1 or 2) to auto-generated emails."
     )
     importance_scores = []
     summaries = []
@@ -102,6 +108,26 @@ def add_importance_and_response(df):
     return df
 
 
+def send_email(to_email, subject, body):
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(EMAIL_ACCOUNT, PASSWORD)
+            message = f"Subject: {subject}\n\n{body}"
+            server.sendmail(EMAIL_ACCOUNT, to_email, message)
+            return True
+    except Exception as e:
+        st.error(f"Failed to send email: {e}")
+        return False
+
+
+def mark_as_read(email_id):
+    mail = connect_to_email()
+    mail.select('inbox')
+    mail.store(email_id, '+FLAGS', '\\Seen')
+    mail.logout()
+    print("read")
+
+
 # Streamlit app
 st.set_page_config(page_title="Your Email Buddy", layout="wide")
 
@@ -114,26 +140,73 @@ Use this tool to manage your inbox more efficiently and respond to important ema
 """)
 
 st.sidebar.header("Settings")
+imap_server = st.sidebar.text_input("IMAP Server", IMAP_SERVER)
 email_account = st.sidebar.text_input("Email Account", EMAIL_ACCOUNT)
 password = st.sidebar.text_input("Password", PASSWORD, type="password")
 api_key = st.sidebar.text_input("OpenAI API Key", OPENAI_API_KEY, type="password")
+number_of_emails_to_fetch = 5
 
-if st.sidebar.button('Fetch and Process Unread Emails'):
-    with st.spinner("Connecting to email server..."):
-        mail = connect_to_email()
-    with st.spinner("Fetching unread emails..."):
-        unread_emails = fetch_unread_emails(mail)
-        mail.logout()
+if st.sidebar.button('Go!') or 'already_started' in st.session_state:
+    # Fetch and process emails if not already done
+    if 'unread_emails' not in st.session_state:
+        with st.spinner("Fetching unread emails..."):
+            mail = connect_to_email()
+            st.session_state.unread_emails = fetch_unread_emails(mail, number_of_emails_to_fetch)
+            mail.logout()
+        st.session_state.already_started = True
 
-    if unread_emails:
-        df = pd.DataFrame(unread_emails[:4]) # todo filter to limit volume here
-        with st.spinner("Analyzing emails..."):
-            df = add_importance_and_response(df)
+    if st.session_state.unread_emails:
+        df = pd.DataFrame(st.session_state.unread_emails)
+        with st.expander("Unread Emails"):
+            st.dataframe(df)
+        if 'processed_emails' not in st.session_state:
+            with st.spinner("Analyzing emails..."):
+                st.session_state.processed_emails = add_importance_and_response(df)
 
-        st.success("Emails processed successfully!")
+        st.write("### Processed Emails")
 
-        # Display the DataFrame
-        st.subheader("📋 Processed Emails")
-        st.dataframe(df)
+        df = st.session_state.processed_emails.sort_values(by='Importance Score', ascending=False)
+
+        st.write("""
+        **Importance Score Key:**
+        - 🔥: Very High Importance
+        - 🔴: High Importance
+        - 🟠: Medium Importance
+        - 🟡: Low Importance
+        - 🟢: Very Low Importance
+        """)
+
+        for idx, row in df.iterrows():
+            importance_emoji = "🔥" if row['Importance Score'] == 5 else \
+                "🔴" if row['Importance Score'] == 4 else \
+                    "🟠" if row['Importance Score'] == 3 else \
+                        "🟡" if row['Importance Score'] == 2 else \
+                            "🟢"
+
+            expander_key = f"expander_{idx}"
+            expander_title = f"{importance_emoji} {row['Summary']}"
+
+            with st.expander(expander_title):
+                st.write(f"**From:** {row['From']}")
+                st.write(f"**Date:** {row['Date']}")
+                st.write(f"**Subject:** {row['Subject']}")
+                st.write(f"**Original Content:** {row['Content']}")
+
+                response_key = f"response_{idx}"
+                draft_response = st.text_area("Edit draft response:", value=row['Draft Response'], key=response_key)
+
+                if st.button(f"Send ✉️", key=f"send_{idx}"):
+                    with st.spinner(f"Sending reply..."):
+                        success = send_email(row['From'], row['Subject'], draft_response)
+                    if success:
+                        with st.spinner(f"Marking email from {row['From']} as read..."):
+                            mark_as_read(row['ID'])
+                        st.success(f"Response sent to {row['From']}")
+
+                        # Remove the email from the processed emails DataFrame
+                        st.session_state.processed_emails = st.session_state.processed_emails.drop(idx)
+                        del st.session_state[f"response_{idx}"]  # Clean up the response text area state
+                        st.rerun()  # Rerun the app to update the interface
+
     else:
         st.info("No unread emails found.")
