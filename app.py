@@ -7,6 +7,7 @@ from email.utils import parsedate_to_datetime
 from openai import OpenAI
 from pydantic import BaseModel
 import smtplib
+from datetime import datetime, timedelta
 
 # Streamlit app
 st.set_page_config(page_title="Your Email Buddy", layout="wide")
@@ -44,7 +45,10 @@ else:
 # Initialize OpenAI client
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Functions
+# Define rate limit parameters
+MAX_FETCHES_PER_SESSION = 5
+SESSION_TIMEOUT = timedelta(minutes=60)  # 60 minutes timeout
+
 def connect_to_email():
     mail = imaplib.IMAP4_SSL(IMAP_SERVER)
     mail.login(EMAIL_ACCOUNT, PASSWORD)
@@ -153,9 +157,27 @@ def mark_as_read(email_id):
     mail.store(email_id, '+FLAGS', '\\Seen')
     mail.logout()
 
+# Rate limit check
+if 'last_fetch_time' not in st.session_state:
+    st.session_state.last_fetch_time = datetime.now()
+    st.session_state.fetch_count = 0
+
+
+# Check rate limit
+def check_rate_limit():
+    now = datetime.now()
+    if (now - st.session_state.last_fetch_time) > SESSION_TIMEOUT:
+        st.session_state.last_fetch_time = now
+        st.session_state.fetch_count = 0
+
+    if st.session_state.fetch_count >= MAX_FETCHES_PER_SESSION:
+        st.warning("You have reached the maximum number of fetches allowed in this session. Please try again later.")
+        return False
+    st.session_state.fetch_count += 1
+    return True
 
 # Streamlit app workflow
-if st.sidebar.button('Go!') or 'already_started' in st.session_state:
+if st.sidebar.button('Go!') and check_rate_limit():
     if 'unread_emails' not in st.session_state:
         with st.spinner("Fetching unread emails..."):
             mail = connect_to_email()
@@ -202,7 +224,7 @@ if st.sidebar.button('Go!') or 'already_started' in st.session_state:
                 st.write(f"**Original Content:** {row['Content']}")
 
                 response_key = f"response_{idx}"
-                draft_response = st.text_area("Edit draft response:", value=row['Draft Response'], key=response_key, height=200)
+                draft_response = st.text_area("Edit draft response:", value=row['Draft Response'], key=response_key)
 
                 if st.button(f"Send ✉️", key=f"send_{idx}"):
                     with st.spinner(f"Sending reply..."):
