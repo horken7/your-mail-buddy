@@ -18,7 +18,7 @@ st.write(f"""
 This application connects to your email inbox, fetches unread emails, and uses ChatGPT to analyze them. 
 For each email, the app provides an importance score, a short summary, and a draft response. 
 You can send the draft response back to the email sender, which would also mark the email as read in your inbox.
-Due to the limitations of the free OpenAI API, this app is limited to a maximum of {number_of_emails_to_fetch} emails per run.
+Since I am out of free OpenAI credits, this app is running on my personal credits. This app is therefore limited to a maximum of {number_of_emails_to_fetch} emails per run (use it with care please).
 An example connection has been provided for you to test the app with dummy data.
 Use this tool to manage your inbox more efficiently and respond to important emails faster.
 GLHF!
@@ -175,14 +175,15 @@ if st.sidebar.button('Go!') or 'already_started' in st.session_state:
 
         df = st.session_state.processed_emails.sort_values(by='Importance Score', ascending=False)
 
-        st.write("""
-        **Importance Score Key:**
-        - 🔥: Very High Importance
-        - 🔴: High Importance
-        - 🟠: Medium Importance
-        - 🟡: Low Importance
-        - 🟢: Very Low Importance
-        """)
+        importance_key = """
+                        **Importance Score Key:**
+                        - 🔥: Very High Importance
+                        - 🔴: High Importance
+                        - 🟠: Medium Importance
+                        - 🟡: Low Importance
+                        - 🟢: Very Low Importance
+                        """
+        # st.write(importance_key) disabled since it looks nicer
 
         for idx, row in df.iterrows():
             importance_emoji = "🔥" if row['Importance Score'] == 5 else \
@@ -194,14 +195,14 @@ if st.sidebar.button('Go!') or 'already_started' in st.session_state:
             expander_key = f"expander_{idx}"
             expander_title = f"{importance_emoji} {row['Summary']}"
 
-            with st.expander(expander_title):
+            with st.expander(row['Summary'], icon=importance_emoji):
                 st.write(f"**From:** {row['From']}")
                 st.write(f"**Date:** {row['Date']}")
                 st.write(f"**Subject:** {row['Subject']}")
                 st.write(f"**Original Content:** {row['Content']}")
 
                 response_key = f"response_{idx}"
-                draft_response = st.text_area("Edit draft response:", value=row['Draft Response'], key=response_key)
+                draft_response = st.text_area("Edit draft response:", value=row['Draft Response'], key=response_key, height=200)
 
                 if st.button(f"Send ✉️", key=f"send_{idx}"):
                     with st.spinner(f"Sending reply..."):
