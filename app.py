@@ -224,7 +224,7 @@ if st.sidebar.button('Go!') and check_rate_limit():
                 st.write(f"**Original Content:** {row['Content']}")
 
                 response_key = f"response_{idx}"
-                draft_response = st.text_area("Edit draft response:", value=row['Draft Response'], key=response_key)
+                draft_response = st.text_area("Edit draft response:", value=row['Draft Response'], key=response_key, height=200)
 
                 if st.button(f"Send ✉️", key=f"send_{idx}"):
                     with st.spinner(f"Sending reply..."):
