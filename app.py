@@ -176,8 +176,9 @@ def check_rate_limit():
     st.session_state.fetch_count += 1
     return True
 
+
 # Streamlit app workflow
-if st.sidebar.button('Go!') and check_rate_limit():
+if (st.sidebar.button('Go!') and check_rate_limit()) or 'already_started' in st.session_state:
     if 'unread_emails' not in st.session_state:
         with st.spinner("Fetching unread emails..."):
             mail = connect_to_email()
