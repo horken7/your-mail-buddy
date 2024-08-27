@@ -12,12 +12,12 @@ from pydantic import BaseModel
 import smtplib
 from datetime import datetime, timedelta
 
-# Streamlit app
-st.set_page_config(page_title="Your Email Buddy", layout="wide")
 NUMBER_OF_EMAILS_TO_FETCH = 2
 ASSISTANT_ID = "asst_BINPnxLsWnBKgDwvrY0ztWal"
 MAX_FETCHES_PER_SESSION = 5
 SESSION_TIMEOUT = timedelta(minutes=60)  # 60 minutes timeout
+
+st.set_page_config(page_title="Your Email Buddy", layout="wide")
 
 # Introductory Text
 st.title("Your Email Buddy")
@@ -50,6 +50,7 @@ else:
 
 # Initialize OpenAI client
 client = OpenAI(api_key=OPENAI_API_KEY)
+
 
 def connect_to_email():
     mail = imaplib.IMAP4_SSL(IMAP_SERVER)
@@ -103,22 +104,19 @@ class EmailSummary(BaseModel):
     summary: str
 
 
-def add_importance_and_response(df):
+def process_emails_and_create_ui(df):
     importance_scores = []
     summaries = []
     responses = []
 
-    progress_bar = st.progress(0)
-    total_emails = len(df)
-
-    for i, content in enumerate(df['Content']):
+    for idx, row in df.iterrows():
         # Create a thread
         thread = client.beta.threads.create()
 
         # Create a new message in the thread
         client.beta.threads.messages.create(
             thread_id=thread.id,
-            content=content,
+            content=row['Content'],
             role="user"
         )
 
@@ -137,21 +135,41 @@ def add_importance_and_response(df):
             time.sleep(0.5)
 
         response = client.beta.threads.messages.list(thread_id=thread.id, order="asc")
-
         response_json = json.loads(response.data[1].content[0].text.value)
 
         importance_scores.append(response_json['importance'])
         summaries.append(response_json['summary'])
         responses.append(response_json['response'])
 
-        # Update progress bar
-        progress_bar.progress((i + 1) / total_emails)
+        # Create expander with processed information
+        importance_emoji = "🔥" if response_json['importance'] == 5 else \
+            "🔴" if response_json['importance'] == 4 else \
+                "🟠" if response_json['importance'] == 3 else \
+                    "🟡" if response_json['importance'] == 2 else \
+                        "🟢"
+
+        with st.expander(response_json['summary'], icon=importance_emoji):
+            st.write(f"**From:** {row['From']}")
+            st.write(f"**Date:** {row['Date']}")
+            st.write(f"**Subject:** {row['Subject']}")
+            st.write(f"**Original Content:** {row['Content']}")
+
+            draft_response = st.text_area("Edit draft response:", value=response_json['response'], key=f"response_{idx}", height=200)
+
+            if st.button(f"Send ✉️", key=f"send_{idx}"):
+                with st.spinner(f"Sending reply..."):
+                    success = send_email(row['From'], row['Subject'], draft_response)
+                if success:
+                    with st.spinner(f"Marking email from {row['From']} as read..."):
+                        mark_as_read(row['ID'])
+                    st.success(f"Response sent to {row['From']}")
+                    st.session_state.processed_emails = st.session_state.processed_emails.drop(idx)
+                    st.rerun()  # Rerun the app to update the interface
 
     df['Importance Score'] = importance_scores
     df['Summary'] = summaries
     df['Draft Response'] = responses
     return df
-
 
 def send_email(to_email, subject, body):
     try:
@@ -170,6 +188,7 @@ def mark_as_read(email_id):
     mail.select('inbox')
     mail.store(email_id, '+FLAGS', '\\Seen')
     mail.logout()
+
 
 # Rate limit check
 if 'last_fetch_time' not in st.session_state:
@@ -206,53 +225,7 @@ if (st.sidebar.button('Go!') and check_rate_limit()) or 'already_started' in st.
             st.dataframe(df)
         if 'processed_emails' not in st.session_state:
             with st.spinner("Analyzing emails..."):
-                st.session_state.processed_emails = add_importance_and_response(df)
-
-        st.write("### Processed Emails")
-
-        df = st.session_state.processed_emails.sort_values(by='Importance Score', ascending=False)
-
-        importance_key = """
-                        **Importance Score Key:**
-                        - 🔥: Very High Importance
-                        - 🔴: High Importance
-                        - 🟠: Medium Importance
-                        - 🟡: Low Importance
-                        - 🟢: Very Low Importance
-                        """
-        # st.write(importance_key) disabled since it looks nicer
-
-        for idx, row in df.iterrows():
-            importance_emoji = "🔥" if row['Importance Score'] == 5 else \
-                "🔴" if row['Importance Score'] == 4 else \
-                    "🟠" if row['Importance Score'] == 3 else \
-                        "🟡" if row['Importance Score'] == 2 else \
-                            "🟢"
-
-            expander_key = f"expander_{idx}"
-            expander_title = f"{importance_emoji} {row['Summary']}"
-
-            with st.expander(row['Summary'], icon=importance_emoji):
-                st.write(f"**From:** {row['From']}")
-                st.write(f"**Date:** {row['Date']}")
-                st.write(f"**Subject:** {row['Subject']}")
-                st.write(f"**Original Content:** {row['Content']}")
-
-                response_key = f"response_{idx}"
-                draft_response = st.text_area("Edit draft response:", value=row['Draft Response'], key=response_key, height=200)
-
-                if st.button(f"Send ✉️", key=f"send_{idx}"):
-                    with st.spinner(f"Sending reply..."):
-                        success = send_email(row['From'], row['Subject'], draft_response)
-                    if success:
-                        with st.spinner(f"Marking email from {row['From']} as read..."):
-                            mark_as_read(row['ID'])
-                        st.success(f"Response sent to {row['From']}")
-
-                        # Remove the email from the processed emails DataFrame
-                        st.session_state.processed_emails = st.session_state.processed_emails.drop(idx)
-                        del st.session_state[f"response_{idx}"]  # Clean up the response text area state
-                        st.rerun()  # Rerun the app to update the interface
+                st.session_state.processed_emails = process_emails_and_create_ui(df)
 
     else:
         st.info("No unread emails found.")
