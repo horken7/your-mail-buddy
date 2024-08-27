@@ -11,7 +11,7 @@ from openai import OpenAI
 import smtplib
 from datetime import datetime, timedelta
 
-NUMBER_OF_EMAILS_TO_FETCH = 2
+NUMBER_OF_EMAILS_TO_FETCH = 5
 ASSISTANT_ID = "asst_BINPnxLsWnBKgDwvrY0ztWal"
 MAX_FETCHES_PER_SESSION = 5
 SESSION_TIMEOUT = timedelta(minutes=60)
@@ -143,15 +143,41 @@ def analyze_email(content):
     # Run the assistant
     run = client.beta.threads.runs.create(thread_id=thread.id, assistant_id=ASSISTANT_ID)
 
-    # Poll for completion
-    while run.status in ["queued", "in_progress"]:
+    attempt = 0
+    max_attempts = 3
+    info_placeholder = st.empty()  # Placeholder for the info bar
+
+    while attempt < max_attempts:
         run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
-        time.sleep(0.5)
+        if run.status == "failed":
+            attempt += 1
+            if attempt < max_attempts:
+                info_placeholder.info(f"Slow response due to OpenAI rate limiting. Retrying, {max_attempts - attempt} attempts left...")
+                time.sleep(21)
+                run = client.beta.threads.runs.create(thread_id=thread.id, assistant_id=ASSISTANT_ID)
+            else:
+                # Final failure response
+                info_placeholder.empty()  # Clear the info bar
+                return {
+                    'importance': 0,
+                    'summary': "Analysis failed, problems communicating with OpenAI",
+                    'response': "Analysis failed, problems communicating with OpenAI"
+                }
+        elif run.status == "completed":
+            info_placeholder.empty()  # Clear the info bar
+            response = client.beta.threads.messages.list(thread_id=thread.id, order="asc")
+            response_json = json.loads(response.data[-1].content[0].text.value)
+            return response_json
+        else:
+            time.sleep(0.5)
 
-    response = client.beta.threads.messages.list(thread_id=thread.id, order="asc")
-    response_json = json.loads(response.data[1].content[0].text.value)
-
-    return response_json
+    # If it exits the loop without returning, assume it failed
+    info_placeholder.empty()  # Clear the info bar
+    return {
+        'importance': 0,
+        'summary': "Analysis failed, problems communicating with OpenAI",
+        'response': "Analysis failed, problems communicating with OpenAI"
+    }
 
 
 def get_importance_emoji(importance):
@@ -160,7 +186,8 @@ def get_importance_emoji(importance):
         4: "🔴",
         3: "🟠",
         2: "🟡",
-        1: "🟢"
+        1: "🟢",
+        0: "❌"
     }
     return emojis.get(importance, "🟢")
 
