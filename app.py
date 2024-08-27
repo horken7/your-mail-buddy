@@ -8,14 +8,13 @@ import email
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
 from openai import OpenAI
-from pydantic import BaseModel
 import smtplib
 from datetime import datetime, timedelta
 
 NUMBER_OF_EMAILS_TO_FETCH = 2
 ASSISTANT_ID = "asst_BINPnxLsWnBKgDwvrY0ztWal"
 MAX_FETCHES_PER_SESSION = 5
-SESSION_TIMEOUT = timedelta(minutes=60)  # 60 minutes timeout
+SESSION_TIMEOUT = timedelta(minutes=60)
 
 st.set_page_config(page_title="Your Email Buddy", layout="wide")
 
@@ -78,19 +77,11 @@ def fetch_unread_emails(mail, number_of_emails_to_fetch):
             email_subject = email_subject.decode(encoding if encoding else 'utf-8')
         email_from = msg.get('From')
         email_date = parsedate_to_datetime(msg.get('Date')).strftime('%Y-%m-%d %H:%M:%S')
-        email_to = msg.get('To')
-        email_content = ''
-        if msg.is_multipart():
-            for part in msg.walk():
-                content_type = part.get_content_type()
-                if content_type == 'text/plain':
-                    email_content += part.get_payload(decode=True).decode()
-        else:
-            email_content = msg.get_payload(decode=True).decode()
+        email_content = get_email_content(msg)
         emails.append({
             'ID': email_id.decode('utf-8'),
             'From': email_from,
-            'To': email_to,
+            'To': msg.get('To'),
             'Date': email_date,
             'Subject': email_subject,
             'Content': email_content
@@ -98,55 +89,24 @@ def fetch_unread_emails(mail, number_of_emails_to_fetch):
     return emails
 
 
-class EmailSummary(BaseModel):
-    importance: int
-    response: str
-    summary: str
+def get_email_content(msg):
+    if msg.is_multipart():
+        content = []
+        for part in msg.walk():
+            if part.get_content_type() == 'text/plain':
+                content.append(part.get_payload(decode=True).decode())
+        return ''.join(content)
+    else:
+        return msg.get_payload(decode=True).decode()
 
 
 def process_emails_and_create_ui(df):
-    importance_scores = []
-    summaries = []
-    responses = []
+    email_results = []
 
     for idx, row in df.iterrows():
-        # Create a thread
-        thread = client.beta.threads.create()
+        response_json = analyze_email(row['Content'])
 
-        # Create a new message in the thread
-        client.beta.threads.messages.create(
-            thread_id=thread.id,
-            content=row['Content'],
-            role="user"
-        )
-
-        # Run the assistant with the created message
-        run = client.beta.threads.runs.create(
-            thread_id=thread.id,
-            assistant_id=ASSISTANT_ID,
-        )
-
-        # Poll for completion of the run
-        while run.status == "queued" or run.status == "in_progress":
-            run = client.beta.threads.runs.retrieve(
-                thread_id=thread.id,
-                run_id=run.id,
-            )
-            time.sleep(0.5)
-
-        response = client.beta.threads.messages.list(thread_id=thread.id, order="asc")
-        response_json = json.loads(response.data[1].content[0].text.value)
-
-        importance_scores.append(response_json['importance'])
-        summaries.append(response_json['summary'])
-        responses.append(response_json['response'])
-
-        # Create expander with processed information
-        importance_emoji = "🔥" if response_json['importance'] == 5 else \
-            "🔴" if response_json['importance'] == 4 else \
-                "🟠" if response_json['importance'] == 3 else \
-                    "🟡" if response_json['importance'] == 2 else \
-                        "🟢"
+        importance_emoji = get_importance_emoji(response_json['importance'])
 
         with st.expander(response_json['summary'], icon=importance_emoji):
             st.write(f"**From:** {row['From']}")
@@ -154,22 +114,56 @@ def process_emails_and_create_ui(df):
             st.write(f"**Subject:** {row['Subject']}")
             st.write(f"**Original Content:** {row['Content']}")
 
-            draft_response = st.text_area("Edit draft response:", value=response_json['response'], key=f"response_{idx}", height=200)
+            draft_response = st.text_area("Edit draft response:", value=response_json['response'],
+                                          key=f"response_{idx}", height=200)
 
             if st.button(f"Send ✉️", key=f"send_{idx}"):
-                with st.spinner(f"Sending reply..."):
-                    success = send_email(row['From'], row['Subject'], draft_response)
-                if success:
-                    with st.spinner(f"Marking email from {row['From']} as read..."):
-                        mark_as_read(row['ID'])
+                if send_email(row['From'], row['Subject'], draft_response):
+                    mark_as_read(row['ID'])
                     st.success(f"Response sent to {row['From']}")
                     st.session_state.processed_emails = st.session_state.processed_emails.drop(idx)
-                    st.rerun()  # Rerun the app to update the interface
+                    st.rerun()
 
-    df['Importance Score'] = importance_scores
-    df['Summary'] = summaries
-    df['Draft Response'] = responses
-    return df
+        email_results.append({
+            'Importance Score': response_json['importance'],
+            'Summary': response_json['summary'],
+            'Draft Response': response_json['response']
+        })
+
+    df_result = df.copy()
+    df_result = df_result.assign(**pd.DataFrame(email_results))
+    return df_result
+
+
+def analyze_email(content):
+    # Create a thread
+    thread = client.beta.threads.create()
+    client.beta.threads.messages.create(thread_id=thread.id, content=content, role="user")
+
+    # Run the assistant
+    run = client.beta.threads.runs.create(thread_id=thread.id, assistant_id=ASSISTANT_ID)
+
+    # Poll for completion
+    while run.status in ["queued", "in_progress"]:
+        run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+        time.sleep(0.5)
+
+    response = client.beta.threads.messages.list(thread_id=thread.id, order="asc")
+    response_json = json.loads(response.data[1].content[0].text.value)
+
+    return response_json
+
+
+def get_importance_emoji(importance):
+    emojis = {
+        5: "🔥",
+        4: "🔴",
+        3: "🟠",
+        2: "🟡",
+        1: "🟢"
+    }
+    return emojis.get(importance, "🟢")
+
 
 def send_email(to_email, subject, body):
     try:
@@ -221,8 +215,9 @@ if (st.sidebar.button('Go!') and check_rate_limit()) or 'already_started' in st.
 
     if st.session_state.unread_emails:
         df = pd.DataFrame(st.session_state.unread_emails)
-        with st.expander("Unread Emails"):
-            st.dataframe(df)
+        # todo disable df print, not necessary
+        # with st.expander("Unread Emails"):
+        #     st.dataframe(df)
         if 'processed_emails' not in st.session_state:
             with st.spinner("Analyzing emails..."):
                 st.session_state.processed_emails = process_emails_and_create_ui(df)
