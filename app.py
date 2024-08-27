@@ -1,3 +1,6 @@
+import json
+import time
+
 import streamlit as st
 import imaplib
 import pandas as pd
@@ -11,7 +14,10 @@ from datetime import datetime, timedelta
 
 # Streamlit app
 st.set_page_config(page_title="Your Email Buddy", layout="wide")
-number_of_emails_to_fetch = 5
+NUMBER_OF_EMAILS_TO_FETCH = 2
+ASSISTANT_ID = "asst_BINPnxLsWnBKgDwvrY0ztWal"
+MAX_FETCHES_PER_SESSION = 5
+SESSION_TIMEOUT = timedelta(minutes=60)  # 60 minutes timeout
 
 # Introductory Text
 st.title("Your Email Buddy")
@@ -19,7 +25,7 @@ st.write(f"""
 This application connects to your email inbox, fetches unread emails, and uses ChatGPT to analyze them. 
 For each email, the app provides an importance score, a short summary, and a draft response. 
 You can send the draft response back to the email sender, which would also mark the email as read in your inbox.
-Since I am out of free OpenAI credits, this app is running on my personal credits. This app is therefore limited to a maximum of {number_of_emails_to_fetch} emails per run (use it with care please).
+Since I am out of free OpenAI credits, this app is running on my personal credits. This app is therefore limited to a maximum of {NUMBER_OF_EMAILS_TO_FETCH} emails per run (use it with care please).
 An example connection has been provided for you to test the app with dummy data.
 Use this tool to manage your inbox more efficiently and respond to important emails faster.
 GLHF!
@@ -44,10 +50,6 @@ else:
 
 # Initialize OpenAI client
 client = OpenAI(api_key=OPENAI_API_KEY)
-
-# Define rate limit parameters
-MAX_FETCHES_PER_SESSION = 5
-SESSION_TIMEOUT = timedelta(minutes=60)  # 60 minutes timeout
 
 def connect_to_email():
     mail = imaplib.IMAP4_SSL(IMAP_SERVER)
@@ -102,12 +104,6 @@ class EmailSummary(BaseModel):
 
 
 def add_importance_and_response(df):
-    system_prompt = (
-        "Analyze the email content and provide an importance score between 0 and 5, "
-        "with 5 being the most important. Draft a response to the email. "
-        "Provide a short and concise one-sentence summary of the email. "
-        "Automatically assign a low importance score (1 or 2) to auto-generated emails."
-    )
     importance_scores = []
     summaries = []
     responses = []
@@ -116,19 +112,37 @@ def add_importance_and_response(df):
     total_emails = len(df)
 
     for i, content in enumerate(df['Content']):
-        user_prompt = f"Email: {content}"
-        completion = client.beta.chat.completions.parse(
-            model="gpt-4o-2024-08-06",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            response_format=EmailSummary,
+        # Create a thread
+        thread = client.beta.threads.create()
+
+        # Create a new message in the thread
+        client.beta.threads.messages.create(
+            thread_id=thread.id,
+            content=content,
+            role="user"
         )
-        event = completion.choices[0].message.parsed
-        importance_scores.append(event.importance)
-        summaries.append(event.summary)
-        responses.append(event.response)
+
+        # Run the assistant with the created message
+        run = client.beta.threads.runs.create(
+            thread_id=thread.id,
+            assistant_id=ASSISTANT_ID,
+        )
+
+        # Poll for completion of the run
+        while run.status == "queued" or run.status == "in_progress":
+            run = client.beta.threads.runs.retrieve(
+                thread_id=thread.id,
+                run_id=run.id,
+            )
+            time.sleep(0.5)
+
+        response = client.beta.threads.messages.list(thread_id=thread.id, order="asc")
+
+        response_json = json.loads(response.data[1].content[0].text.value)
+
+        importance_scores.append(response_json['importance'])
+        summaries.append(response_json['summary'])
+        responses.append(response_json['response'])
 
         # Update progress bar
         progress_bar.progress((i + 1) / total_emails)
@@ -182,7 +196,7 @@ if (st.sidebar.button('Go!') and check_rate_limit()) or 'already_started' in st.
     if 'unread_emails' not in st.session_state:
         with st.spinner("Fetching unread emails..."):
             mail = connect_to_email()
-            st.session_state.unread_emails = fetch_unread_emails(mail, number_of_emails_to_fetch)
+            st.session_state.unread_emails = fetch_unread_emails(mail, NUMBER_OF_EMAILS_TO_FETCH)
             mail.logout()
         st.session_state.already_started = True
 
