@@ -21,12 +21,15 @@ st.set_page_config(page_title="Your Email Buddy", layout="wide")
 # Introductory Text
 st.title("Your Email Buddy")
 st.write(f"""
+Your personal email assistant, helping you manage your inbox more efficiently and craft personalized responses to important emails.
+
 This application connects to your email inbox, fetches unread emails, and uses ChatGPT to analyze them. 
 For each email, the app provides an importance score, a short summary, and a draft response. 
+The draft response is adapted to my writing style in previously sent emails, and can be extended to automatically adapt to any users writing style. 
 You can send the draft response back to the email sender, which would also mark the email as read in your inbox.
-Since I am out of free OpenAI credits, this app is running on my personal credits. This app is therefore limited to a maximum of {NUMBER_OF_EMAILS_TO_FETCH} emails per run (use it with care please).
 An example connection has been provided for you to test the app with dummy data.
-Use this tool to manage your inbox more efficiently and respond to important emails faster.
+The example connection is running on my personal OpenAI credits. This app is therefore limited to a maximum of {NUMBER_OF_EMAILS_TO_FETCH} emails per run (use it with care please).
+OpenAI unfortunately have very strict rate limits in the low paid tiers, so please be patient with the app (yes it will be slow, but it works).
 GLHF!
 """)
 
