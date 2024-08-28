@@ -15,6 +15,7 @@ NUMBER_OF_EMAILS_TO_FETCH = 5
 ASSISTANT_ID = "asst_BINPnxLsWnBKgDwvrY0ztWal"
 MAX_FETCHES_PER_SESSION = 5
 SESSION_TIMEOUT = timedelta(minutes=60)
+MAX_FETCH_ATTEMPTS = st.secrets.get("max_fetch_attempts", 7)
 
 st.set_page_config(page_title="Your Email Buddy", layout="wide")
 
@@ -158,14 +159,13 @@ def analyze_email(content):
     run = client.beta.threads.runs.create(thread_id=thread.id, assistant_id=ASSISTANT_ID)
 
     attempt = 0
-    max_attempts = 5
     info_placeholder = st.empty()  # Placeholder for the info bar
 
-    while attempt < max_attempts:
+    while attempt < MAX_FETCH_ATTEMPTS:
         run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
         if run.status == "failed":
             attempt += 1
-            if attempt < max_attempts:
+            if attempt < MAX_FETCH_ATTEMPTS:
                 info_placeholder.info(f"Slow response due to OpenAI rate limiting. Retrying, {max_attempts - attempt} attempts left...")
                 time.sleep(21)
                 run = client.beta.threads.runs.create(thread_id=thread.id, assistant_id=ASSISTANT_ID)
