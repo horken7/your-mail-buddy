@@ -6,7 +6,7 @@ import imaplib
 import pandas as pd
 import email
 from email.header import decode_header
-from email.utils import parsedate_to_datetime
+from email.utils import parsedate_to_datetime, parseaddr
 from openai import OpenAI
 import smtplib
 from datetime import datetime, timedelta
@@ -22,16 +22,20 @@ st.set_page_config(page_title="Your Email Buddy", layout="wide")
 st.title("Your Email Buddy")
 st.write(f"""
 Your personal email assistant, helping you manage your inbox more efficiently and craft personalized responses to important emails.
-
-This application connects to your email inbox, fetches unread emails, and uses ChatGPT to analyze them. 
-For each email, the app provides an importance score, a short summary, and a draft response. 
-The draft response is adapted to my writing style in previously sent emails, and can be extended to automatically adapt to any users writing style. 
-You can send the draft response back to the email sender, which would also mark the email as read in your inbox.
-An example connection has been provided for you to test the app with dummy data.
-The example connection is running on my personal OpenAI credits. This app is therefore limited to a maximum of {NUMBER_OF_EMAILS_TO_FETCH} emails per run (use it with care please).
-OpenAI unfortunately have very strict rate limits in the low paid tiers, so please be patient with the app (yes it will be slow, but it works).
-GLHF!
 """)
+
+with st.expander("Info", icon=":material/info:"):
+    st.write(f"""
+    This application connects to your email inbox, fetches unread emails, and uses ChatGPT to analyze them. 
+    For each email, the app provides an importance score, a short summary, and a draft response. 
+    The draft response is adapted to my writing style in previously sent emails, and can be extended to automatically adapt to any users writing style. 
+    You can send the draft response back to the email sender, which would also mark the email as read in your inbox.
+    An example connection has been provided for you to test the app with dummy data.
+    The example connection is running on my personal OpenAI credits. This app is therefore limited to a maximum of {NUMBER_OF_EMAILS_TO_FETCH} emails per run (use it with care please).
+    OpenAI unfortunately have very strict rate limits in the low paid tiers, so please be patient with the app (yes it will be slow, but it works).
+    GLHF!
+    """)
+
 
 st.sidebar.header("Settings")
 
@@ -78,9 +82,13 @@ def fetch_unread_emails(mail, number_of_emails_to_fetch):
         email_subject, encoding = decode_header(msg['Subject'])[0]
         if isinstance(email_subject, bytes):
             email_subject = email_subject.decode(encoding if encoding else 'utf-8')
-        email_from = msg.get('From')
+
+        email_from_full = msg.get('From')
+        email_from = parseaddr(email_from_full)[1]  # Extract just the email address
+
         email_date = parsedate_to_datetime(msg.get('Date')).strftime('%Y-%m-%d %H:%M:%S')
         email_content = get_email_content(msg)
+
         emails.append({
             'ID': email_id.decode('utf-8'),
             'From': email_from,
