@@ -109,20 +109,23 @@ def process_emails_and_create_ui(df):
         importance_emoji = get_importance_emoji(response_json['importance'])
 
         with st.expander(response_json['summary'], icon=importance_emoji):
-            st.write(f"**From:** {row['From']}")
-            st.write(f"**Date:** {row['Date']}")
-            st.write(f"**Subject:** {row['Subject']}")
-            st.write(f"**Original Content:** {row['Content']}")
+            if response_json['importance'] == 0:
+                st.error(response_json['response'])
+            else:
+                st.write(f"**From:** {row['From']}")
+                st.write(f"**Date:** {row['Date']}")
+                st.write(f"**Subject:** {row['Subject']}")
+                st.write(f"**Original Content:** {row['Content']}")
 
-            draft_response = st.text_area("Edit draft response:", value=response_json['response'],
-                                          key=f"response_{idx}", height=200)
+                draft_response = st.text_area("Edit draft response:", value=response_json['response'],
+                                              key=f"response_{idx}", height=200)
 
-            if st.button(f"Send ✉️", key=f"send_{idx}"):
-                if send_email(row['From'], row['Subject'], draft_response):
-                    mark_as_read(row['ID'])
-                    st.success(f"Response sent to {row['From']}")
-                    st.session_state.processed_emails = st.session_state.processed_emails.drop(idx)
-                    st.rerun()
+                if st.button(f"Send ✉️", key=f"send_{idx}"):
+                    if send_email(row['From'], row['Subject'], draft_response):
+                        mark_as_read(row['ID'])
+                        st.success(f"Response sent to {row['From']}")
+                        st.session_state.processed_emails = st.session_state.processed_emails.drop(idx)
+                        st.rerun()
 
         email_results.append({
             'Importance Score': response_json['importance'],
@@ -144,7 +147,7 @@ def analyze_email(content):
     run = client.beta.threads.runs.create(thread_id=thread.id, assistant_id=ASSISTANT_ID)
 
     attempt = 0
-    max_attempts = 3
+    max_attempts = 5
     info_placeholder = st.empty()  # Placeholder for the info bar
 
     while attempt < max_attempts:
@@ -161,7 +164,7 @@ def analyze_email(content):
                 return {
                     'importance': 0,
                     'summary': "Analysis failed, problems communicating with OpenAI",
-                    'response': "Analysis failed, problems communicating with OpenAI"
+                    'response': run.last_error.message
                 }
         elif run.status == "completed":
             info_placeholder.empty()  # Clear the info bar
