@@ -166,7 +166,7 @@ def analyze_email(content):
         if run.status == "failed":
             attempt += 1
             if attempt < MAX_FETCH_ATTEMPTS:
-                info_placeholder.info(f"Slow response due to OpenAI rate limiting. Retrying, {max_attempts - attempt} attempts left...")
+                info_placeholder.info(f"Slow response due to OpenAI rate limiting. Retrying, {MAX_FETCH_ATTEMPTS - attempt} attempts left...")
                 time.sleep(21)
                 run = client.beta.threads.runs.create(thread_id=thread.id, assistant_id=ASSISTANT_ID)
             else:
