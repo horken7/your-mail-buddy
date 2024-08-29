@@ -30,4 +30,4 @@ jobs:
 
       - uses: streamlit/streamlit-app-action@v0.0.3
         with:
-          app-path: streamlit_app.py
+          app-path: app.py
