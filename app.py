@@ -21,7 +21,7 @@ MAX_FETCH_ATTEMPTS = st.secrets.get("max_fetch_attempts", 7)
 st.set_page_config(page_title="Your Email Buddy", layout="wide")
 
 # Introductory Text
-st.title("Your Email Buddy")
+st.title("Your Mail Buddy")
 st.write(f"""
 Your personal email assistant, helping you manage your inbox more efficiently and craft personalized responses to important emails.
 """)
