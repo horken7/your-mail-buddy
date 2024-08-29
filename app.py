@@ -1,5 +1,6 @@
 import json
 import time
+from json import JSONDecodeError
 
 import streamlit as st
 import imaplib
@@ -180,8 +181,15 @@ def analyze_email(content):
         elif run.status == "completed":
             info_placeholder.empty()  # Clear the info bar
             response = client.beta.threads.messages.list(thread_id=thread.id, order="asc")
-            response_json = json.loads(response.data[-1].content[0].text.value)
-            return response_json
+            try:
+                response_json = json.loads(response.data[-1].content[0].text.value)
+                return response_json
+            except JSONDecodeError:
+                return {
+                    'importance': 0,
+                    'summary': "Analysis failed, problems communicating with OpenAI",
+                    'response': f'Failed to parse: {response.data[-1].content[0].text.value}'
+                }
         else:
             time.sleep(0.5)
 
