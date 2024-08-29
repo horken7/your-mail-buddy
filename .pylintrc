@@ -10,3 +10,7 @@ disable=
     C0111,  # Missing docstring
     R0903,  # Too few public methods
     W1203,  # Use of magic method
+    import-error,
+    src.your_mail_buddy.analyze_helpers,
+    src.your_mail_buddy.email_helpers,
+    src.your_mail_buddy.utils
