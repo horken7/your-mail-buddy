@@ -1,7 +1,7 @@
 Your Mail Buddy
 ===============
 
-[![Actions status](https://github.com/horken7/your-mail-buddy/workflows/main/badge.svg)](https://github.com/horken7/your-mail-buddy/actions)
+[![Actions status](https://github.com/horken7/your-mail-buddy/actions/workflows/main.yml/badge.svg)](https://github.com/horken7/your-mail-buddy/actions)
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://your-mail-buddy.streamlit.app/)
 
 Your Mail Buddy is a Streamlit-based application designed to help you efficiently manage your email inbox. This app connects to your email account, fetches unread emails, and leverages OpenAI's GPT models to analyze and generate personalized responses. The application offers features such as email importance scoring, email summarization, and the ability to send crafted replies directly from the app.
