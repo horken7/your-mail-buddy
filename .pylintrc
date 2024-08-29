@@ -1,0 +1,12 @@
+[MASTER]
+ignore=tests
+
+[FORMAT]
+# Maximum number of characters on a single line.
+max-line-length = 120
+
+[MESSAGES CONTROL]
+disable=
+    C0111,  # Missing docstring
+    R0903,  # Too few public methods
+    W1203,  # Use of magic method
