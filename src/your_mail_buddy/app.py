@@ -4,10 +4,11 @@ import pandas as pd
 import streamlit as st
 from openai import OpenAI
 
-from .analyze_helpers import analyze_email
-from .email_helpers import (connect_to_email, fetch_unread_emails,
-                            mark_as_read, send_email)
-from .utils import check_rate_limit, get_importance_emoji
+from your_mail_buddy.analyze_helpers import analyze_email
+from your_mail_buddy.email_helpers import (connect_to_email,
+                                           fetch_unread_emails, mark_as_read,
+                                           send_email)
+from your_mail_buddy.utils import check_rate_limit, get_importance_emoji
 
 NUMBER_OF_EMAILS_TO_FETCH = 5
 ASSISTANT_ID = "asst_BINPnxLsWnBKgDwvrY0ztWal"
