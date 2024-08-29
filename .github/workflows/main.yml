@@ -28,6 +28,16 @@ jobs:
       - name: Run tox
         run: tox
 
+      - name: Create default secrets.toml
+        run: |
+          mkdir -p ~/.streamlit
+          echo "[general]" > ~/.streamlit/secrets.toml
+          echo "imap_server = 'default_imap_server'" >> ~/.streamlit/secrets.toml
+          echo "email_account = 'default_email_account'" >> ~/.streamlit/secrets.toml
+          echo "email_password = 'default_password'" >> ~/.streamlit/secrets.toml
+          echo "openai_api_key = 'default_openai_api_key'" >> ~/.streamlit/secrets.toml
+
+
       - name: Streamlit
         uses: streamlit/streamlit-app-action@v0.0.3
         with:
