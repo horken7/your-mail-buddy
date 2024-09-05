@@ -74,7 +74,7 @@ function createImportantEmailsCard(importantEmails, card, accessToken) {
       var email = importantEmails[i];
       var textWidget = CardService.newTextParagraph()
         .setText("<b>Subject:</b> " + email.subject + "<br><br>" +
-                 "<b>From:</b> " + email.from + "<br><br>" +
+                 "<b>From: </b> " + email.from + "<br><br>" +
                  "<b>Summary:</b> " + email.summary);
       section.addWidget(textWidget);
 
@@ -130,7 +130,7 @@ function onGmailMessageOpen(e) {
   var detailsWidget = CardService.newTextParagraph()
     .setText("<b>Subject:</b> " + originalSubject + "<br><br>" +
              "<b>From:</b> " + originalSender + "<br><br>" +
-             "<b>Summary:</b>" + summary);
+             "<b>Summary:</b> " + summary);
   section.addWidget(detailsWidget);
 
   // Add the "Generate Response" button
@@ -244,7 +244,7 @@ function generateResponseHomepage(e) {
   var message = GmailApp.getMessageById(e.parameters.messageId);
   var originalMessageBody = message.getPlainBody();
 
-  var prompt = "Please generate a concise and professional response to the following email:\n\n" + originalMessageBody;
+  var prompt = "Please generate a concise and professional response to the following email:\n\n" + originalMessageBody + "\n\nInfer the name to use as signature based on the original recipient: \n\n" + message.getTo() + "\n\nDo not include the email subject in the response";
   var geminiResponse = callGemini(prompt);
 
   message.createDraftReplyAll(geminiResponse);
@@ -263,7 +263,7 @@ function generateResponse(e) {
   var message = GmailApp.getMessageById(messageId);
   var originalMessageBody = message.getPlainBody();
 
-  var prompt = "Please generate a concise and professional response to the following email:\n\n" + originalMessageBody;
+  var prompt = "Please generate a concise and professional response to the following email:\n\n" + originalMessageBody + "\n\nInfer the name to use as signature based on the original recipient: \n\n" + message.getTo() + "\n\nDo not include the email subject in the response";
   var geminiResponse = callGemini(prompt);
 
   message.createDraftReplyAll(geminiResponse);
