@@ -195,7 +195,8 @@ function callGemini(prompt) {
 
 function callGeminiWithStructuredOutput(originalMessageBody) {
   var prompt =
-    `On a scale of 1 to 5, with 1 being least important and 5 being most important, rate the importance of the following email. Automatically assign a low importance score (1 or 2) to auto-generated emails from. Use this JSON reponse schema:
+    `On a scale of 1 to 5, with 1 being least important and 5 being most important, rate the importance of the following email. Automatically assign a low importance score (1 or 2) to auto-generated emails from companies. Assign the highest scores only to emails that are critical, demanding my immediate attention.
+    Use this JSON reponse schema:
     {
       "importanceScore": [value],
     }
@@ -244,7 +245,14 @@ function generateResponseHomepage(e) {
   var message = GmailApp.getMessageById(e.parameters.messageId);
   var originalMessageBody = message.getPlainBody();
 
-  var prompt = "Please generate a concise and professional response to the following email:\n\n" + originalMessageBody + "\n\nInfer the name to use as signature based on the original recipient: \n\n" + message.getTo() + "\n\nDo not include the email subject in the response";
+var prompt = "Please generate a concise and professional response to the following email:\n\n"
+  + originalMessageBody
+  + "\n\n**Signature Instructions:** \
+  * **DO NOT** include any placeholder names in the signature (like [Your Name]). \
+  * **EXTRACT** the appropriate name to use in the signature directly from the original email. \
+  * **CAREFULLY READ** the original email to identify the sender's name or any context clues that indicate the correct signature. \
+  * If you are **unable to confidently determine the correct name**, omit the signature completely. \
+  \n\n**Compose the response without including the email subject. DO NOT end the response with '[Your Name]'**.";
   var geminiResponse = callGemini(prompt);
 
   message.createDraftReplyAll(geminiResponse);
@@ -263,7 +271,14 @@ function generateResponse(e) {
   var message = GmailApp.getMessageById(messageId);
   var originalMessageBody = message.getPlainBody();
 
-  var prompt = "Please generate a concise and professional response to the following email:\n\n" + originalMessageBody + "\n\nInfer the name to use as signature based on the original recipient: \n\n" + message.getTo() + "\n\nDo not include the email subject in the response";
+  var prompt = "Please generate a concise and professional response to the following email:\n\n"
+    + originalMessageBody
+    + "\n\n**Signature Instructions:** \
+    * **DO NOT** include any placeholder names in the signature (like [Your Name]). \
+    * **EXTRACT** the appropriate name to use in the signature directly from the original email. \
+    * **CAREFULLY READ** the original email to identify the sender's name or any context clues that indicate the correct signature. \
+    * If you are **unable to confidently determine the correct name**, omit the signature completely. \
+    \n\n**Compose the response without including the email subject. DO NOT end the response with '[Your Name]'**.";
   var geminiResponse = callGemini(prompt);
 
   message.createDraftReplyAll(geminiResponse);
