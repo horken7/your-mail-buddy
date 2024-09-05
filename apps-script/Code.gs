@@ -44,7 +44,8 @@ function analyzeUnreadEmails(e) {
         importantEmails.push({
           subject: latestMessage.getSubject(),
           from: latestMessage.getFrom(),
-          summary: summary
+          summary: summary,
+          messageId: latestMessage.getId()
         });
       }
     } catch (error) {
@@ -54,7 +55,7 @@ function analyzeUnreadEmails(e) {
 
   var card = CardService.newCardBuilder();
   card.setHeader(createStandardHeader());
-  createImportantEmailsCard(importantEmails, card);
+  createImportantEmailsCard(importantEmails, card, e.gmail.accessToken);
   builtCard = card.build()
 
 
@@ -66,7 +67,7 @@ function analyzeUnreadEmails(e) {
     .build();
 }
 
-function createImportantEmailsCard(importantEmails, card) {
+function createImportantEmailsCard(importantEmails, card, accessToken) {
   if (importantEmails.length > 0) {
     for (var i = 0; i < importantEmails.length; i++) {
       var section = CardService.newCardSection();
@@ -76,6 +77,20 @@ function createImportantEmailsCard(importantEmails, card) {
                  "<b>From:</b> " + email.from + "<br><br>" +
                  "<b>Summary:</b> " + email.summary);
       section.addWidget(textWidget);
+
+      var button = CardService.newTextButton()
+        .setText("Generate Draft Response")
+        .setBackgroundColor("#FFD700")
+        .setIcon(CardService.Icon.EMAIL)
+        .setOnClickAction(CardService.newAction()
+          .setFunctionName('generateResponseHomepage')
+          .setParameters({
+            accessToken: accessToken,
+            messageId: email.messageId
+          }))
+        .setTextButtonStyle(CardService.TextButtonStyle.FILLED);
+      section.addWidget(button);
+
       card.addSection(section);
     }
   } else {
@@ -115,7 +130,7 @@ function onGmailMessageOpen(e) {
   var detailsWidget = CardService.newTextParagraph()
     .setText("<b>Subject:</b> " + originalSubject + "<br><br>" +
              "<b>From:</b> " + originalSender + "<br><br>" +
-             "<b>Summary:</b>" + summary + "<br><br><br>");
+             "<b>Summary:</b>" + summary);
   section.addWidget(detailsWidget);
 
   // Add the "Generate Response" button
@@ -180,7 +195,7 @@ function callGemini(prompt) {
 
 function callGeminiWithStructuredOutput(originalMessageBody) {
   var prompt =
-    `On a scale of 1 to 5, with 1 being least important and 5 being most important, rate the importance of the following email. Automatically assign a low importance score (1 or 2) to auto-generated emails from companies. Use this JSON reponse schema:
+    `On a scale of 1 to 5, with 1 being least important and 5 being most important, rate the importance of the following email. Automatically assign a low importance score (1 or 2) to auto-generated emails from. Use this JSON reponse schema:
     {
       "importanceScore": [value],
     }
@@ -221,6 +236,23 @@ function callGeminiWithStructuredOutput(originalMessageBody) {
     console.error("Invalid importance score from Gemini:", content);
     throw new Error("Invalid importance score from Gemini");
   }
+}
+
+function generateResponseHomepage(e) {
+  GmailApp.setCurrentMessageAccessToken(e.parameters.accessToken);
+
+  var message = GmailApp.getMessageById(e.parameters.messageId);
+  var originalMessageBody = message.getPlainBody();
+
+  var prompt = "Please generate a concise and professional response to the following email:\n\n" + originalMessageBody;
+  var geminiResponse = callGemini(prompt);
+
+  message.createDraftReplyAll(geminiResponse);
+
+  return CardService.newActionResponseBuilder()
+    .setNotification(CardService.newNotification()
+      .setText("Response draft created with Gemini!"))
+    .build();
 }
 
 function generateResponse(e) {
