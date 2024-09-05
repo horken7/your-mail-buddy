@@ -3,6 +3,12 @@ const properties = PropertiesService.getScriptProperties().getProperties();
 const geminiApiKey = properties['GOOGLE_API_KEY'];
 const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
 
+function createStandardHeader() {
+  return CardService.newCardHeader()
+    .setTitle("Your Mail Buddy")
+    .setImageUrl("https://cdn2.iconfinder.com/data/icons/metaverse-flat-5/60/Robot-Assistant-Meta-ai-bot-512.png");
+}
+
 function analyzeUnreadEmails(e) {
   var selectedLabelName = e.formInput.selectedLabel;
 
@@ -46,7 +52,11 @@ function analyzeUnreadEmails(e) {
     }
   }
 
-  var card = createImportantEmailsCard(importantEmails, selectedLabelName);
+  var card = CardService.newCardBuilder();
+  card.setHeader(createStandardHeader());
+  createImportantEmailsCard(importantEmails, selectedLabelName);
+  card.build()
+
 
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().updateCard(card))
@@ -56,9 +66,7 @@ function analyzeUnreadEmails(e) {
     .build();
 }
 
-function createImportantEmailsCard(importantEmails, labelName) {
-  var card = CardService.newCardBuilder();
-
+function createImportantEmailsCard(importantEmails) {
   if (importantEmails.length > 0) {
     for (var i = 0; i < importantEmails.length; i++) {
       var section = CardService.newCardSection();
@@ -74,8 +82,6 @@ function createImportantEmailsCard(importantEmails, labelName) {
     var section = CardService.newCardSection();
     section.addWidget(CardService.newTextParagraph().setText("No important emails found."));
   }
-
-  return card.build();
 }
 
 function onGmailMessageOpen(e) {
@@ -99,11 +105,8 @@ function onGmailMessageOpen(e) {
   // Create the card
   var card = CardService.newCardBuilder();
 
-  // Add a header to the card
-  var header = CardService.newCardHeader()
-    .setTitle("Your Mail Buddy")
-    .setImageUrl("https://cdn2.iconfinder.com/data/icons/metaverse-flat-5/60/Robot-Assistant-Meta-ai-bot-512.png");
-  card.setHeader(header);
+  // Add the standard header to the card
+  card.setHeader(createStandardHeader());
 
   // Create a single section for both email details and the button
   var section = CardService.newCardSection();
@@ -240,10 +243,9 @@ function generateResponse(e) {
 
 function onHomepage(e) {
   var card = CardService.newCardBuilder();
-  var header = CardService.newCardHeader()
-    .setTitle("Your Mail Buddy")
-    .setImageUrl("https://cdn2.iconfinder.com/data/icons/metaverse-flat-5/60/Robot-Assistant-Meta-ai-bot-512.png"); // Replace with a suitable image URL
-  card.setHeader(header);
+
+  // Add the standard header to the card
+  card.setHeader(createStandardHeader());
 
   var section = CardService.newCardSection();
 
@@ -270,9 +272,6 @@ function onHomepage(e) {
   section.addWidget(analyzeButton);
   card.addSection(section);
 
-  return CardService.newCardBuilder()
-    .setName('hello-world-addon')
-    .addSection(section)
-    .build();
+  return card.build();
 
 }
