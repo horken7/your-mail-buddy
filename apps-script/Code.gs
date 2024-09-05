@@ -1,0 +1,278 @@
+// Constants & setup (adjust based on your Gemini API details)
+const properties = PropertiesService.getScriptProperties().getProperties();
+const geminiApiKey = properties['GOOGLE_API_KEY'];
+const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
+
+function analyzeUnreadEmails(e) {
+  var selectedLabelName = e.formInput.selectedLabel;
+
+  if (!selectedLabelName) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification()
+        .setText("Please select a label to continue."))
+      .build();
+  }
+
+  selectedLabelName = selectedLabelName.replace('-', ' ')
+
+  var unreadThreads = GmailApp.search('is:unread -label:' + selectedLabelName);
+
+  var importantEmails = [];
+
+  for (var i = 0; i < unreadThreads.length; i++) {
+    var thread = unreadThreads[i];
+    var messages = thread.getMessages();
+    var latestMessage = messages[messages.length - 1];
+    var messageBody = latestMessage.getPlainBody();
+
+    try {
+      var importanceScore = callGeminiWithStructuredOutput(messageBody);
+
+      if (importanceScore >= 4) {
+        thread.addLabel(GmailApp.getUserLabelByName(selectedLabelName));
+
+        // Get a summary of the email using Gemini
+        var summaryPrompt = "Summarize the following email in one sentence:\n\n" + messageBody;
+        var summary = callGemini(summaryPrompt);
+
+        importantEmails.push({
+          subject: latestMessage.getSubject(),
+          from: latestMessage.getFrom(),
+          summary: summary
+        });
+      }
+    } catch (error) {
+      console.error("Error analyzing email:", error);
+    }
+  }
+
+  var card = createImportantEmailsCard(importantEmails, selectedLabelName);
+
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().updateCard(card))
+    .setNotification(CardService.newNotification()  
+
+      .setText("Unread emails analyzed for importance!"))
+    .build();
+}
+
+function createImportantEmailsCard(importantEmails, labelName) {
+  var card = CardService.newCardBuilder();
+
+  if (importantEmails.length > 0) {
+    for (var i = 0; i < importantEmails.length; i++) {
+      var section = CardService.newCardSection();
+      var email = importantEmails[i];
+      var textWidget = CardService.newTextParagraph()
+        .setText("<b>Subject:</b> " + email.subject + "<br><br>" +
+                 "<b>From:</b> " + email.from + "<br><br>" +
+                 "<b>Summary:</b> " + email.summary);
+      section.addWidget(textWidget);
+      card.addSection(section);
+    }
+  } else {
+    var section = CardService.newCardSection();
+    section.addWidget(CardService.newTextParagraph().setText("No important emails found."));
+  }
+
+  return card.build();
+}
+
+function onGmailMessageOpen(e) {
+  // Get the ID of the currently opened message
+  var messageId = e.gmail.messageId;
+
+  // Fetch the message using the message ID
+  var message = GmailApp.getMessageById(messageId);
+
+  // Get the original message body
+  var originalMessageBody = message.getPlainBody();
+
+  // Get the subject and sender of the original email
+  var originalSubject = message.getSubject();
+  var originalSender = message.getFrom();
+
+  // Get a summary of the email using Gemini
+  var summaryPrompt = "Summarize the following email in one sentence:\n\n" + originalMessageBody;
+  var summary = callGemini(summaryPrompt);
+
+  // Create the card
+  var card = CardService.newCardBuilder();
+
+  // Add a header to the card
+  var header = CardService.newCardHeader()
+    .setTitle("Your Mail Buddy")
+    .setImageUrl("https://cdn2.iconfinder.com/data/icons/metaverse-flat-5/60/Robot-Assistant-Meta-ai-bot-512.png");
+  card.setHeader(header);
+
+  // Create a single section for both email details and the button
+  var section = CardService.newCardSection();
+
+  // Add the email details widget
+  var detailsWidget = CardService.newTextParagraph()
+    .setText("<b>Subject:</b> " + originalSubject + "<br><br>" +
+             "<b>From:</b> " + originalSender + "<br><br>" +
+             "<b>Summary:</b>" + summary + "<br><br><br>");
+  section.addWidget(detailsWidget);
+
+  // Add the "Generate Response" button
+  var button = CardService.newTextButton()
+    .setText("Generate Draft Response")
+    .setBackgroundColor("#FFD700")
+    .setIcon(CardService.Icon.EMAIL)
+    .setOnClickAction(CardService.newAction().setFunctionName('generateResponse'))
+    .setTextButtonStyle(CardService.TextButtonStyle.FILLED);
+  section.addWidget(button);
+
+  card.addSection(section);
+
+  // Get the user's labels
+  var labels = GmailApp.getUserLabels();
+
+  // Create a dropdown for label selection
+  var labelDropdown = CardService.newSelectionInput()
+    .setType(CardService.SelectionInputType.DROPDOWN)
+    .setTitle("Select Label for Important Emails")
+    .setFieldName("selectedLabel");
+
+  // Add labels to the dropdown
+  labels.map(label => label.getName())
+    .forEach(labelName => labelDropdown.addItem(labelName, labelName.replace(/ /g, '-'), false));
+  section.addWidget(labelDropdown); // Add the dropdown to the same section
+
+  var analyzeButton = CardService.newTextButton()
+    .setText("Analyze Importance")
+    .setIcon(CardService.Icon.FLIGHT_DEPARTURE)
+    .setBackgroundColor("#FF3311")
+    .setOnClickAction(CardService.newAction().setFunctionName('analyzeUnreadEmails'))
+    .setTextButtonStyle(CardService.TextButtonStyle.FILLED);
+  section.addWidget(analyzeButton);
+
+  return card.build();
+}
+
+function callGemini(prompt) {
+  const payload = {
+    "contents": [
+      {
+        "parts": [
+          {
+            "text": prompt
+          }
+        ]
+      }
+    ]
+  };
+
+  const options = {
+    'method': 'post',
+    'contentType': 'application/json',
+    'payload': JSON.stringify(payload)
+  };
+  const response = UrlFetchApp.fetch(geminiEndpoint, options);
+  const data = JSON.parse(response);
+  const content = data["candidates"][0]["content"]["parts"][0]["text"];
+  return content;
+}
+
+function callGeminiWithStructuredOutput(originalMessageBody) {
+  var prompt =
+    `On a scale of 1 to 5, with 1 being least important and 5 being most important, automatically assign a low importance score (1 or 2) to auto-generated emails. Rate the importance of the following email. Use this JSON reponse schema:
+    {
+      "importanceScore": { "type": "int" },
+    }
+    Email: ` + originalMessageBody;
+
+  const payload = {
+    "contents": [
+      {
+        "parts": [
+          {
+            "text": prompt
+          }
+        ]
+      }
+    ],
+    "generationConfig": {
+      "responseMimeType": "application/json"
+    }
+  };
+
+  const options = {
+    'method': 'post',
+    'contentType': 'application/json',
+    'payload': JSON.stringify(payload)
+  };
+
+  const response = UrlFetchApp.fetch(geminiEndpoint, options);
+
+  const data = JSON.parse(response);
+
+  const content = JSON.parse(data["candidates"][0]["content"]["parts"][0]["text"]);
+  const importanceScore = content.importanceScore;
+
+  if (typeof importanceScore === 'number' && importanceScore >= 1 && importanceScore <= 5) {
+    return importanceScore;
+  } else {
+    console.error("Invalid importance score from Gemini:", content);
+    throw new Error("Invalid importance score from Gemini");
+  }
+}
+
+function generateResponse(e) {
+  var accessToken = e.gmail.accessToken;
+  GmailApp.setCurrentMessageAccessToken(accessToken);
+
+  var messageId = e.gmail.messageId;
+  var message = GmailApp.getMessageById(messageId);
+  var originalMessageBody = message.getPlainBody();
+
+  var prompt = "Please generate a concise and professional response to the following email:\n\n" + originalMessageBody;
+  var geminiResponse = callGemini(prompt);
+
+  message.createDraftReplyAll(geminiResponse);
+
+  return CardService.newActionResponseBuilder()
+    .setNotification(CardService.newNotification()
+      .setText("Response draft created with Gemini!"))
+    .build();
+}
+
+function onHomepage(e) {
+  var card = CardService.newCardBuilder();
+  var header = CardService.newCardHeader()
+    .setTitle("Your Mail Buddy")
+    .setImageUrl("https://cdn2.iconfinder.com/data/icons/metaverse-flat-5/60/Robot-Assistant-Meta-ai-bot-512.png"); // Replace with a suitable image URL
+  card.setHeader(header);
+
+  var section = CardService.newCardSection();
+
+  // Get the user's labels
+  var labels = GmailApp.getUserLabels();
+
+  // Create a dropdown for label selection
+  var labelDropdown = CardService.newSelectionInput()
+    .setType(CardService.SelectionInputType.DROPDOWN)
+    .setTitle("Select Label for Important Emails")
+    .setFieldName("selectedLabel");
+
+  // Add labels to the dropdown (excluding system labels)
+  labels.map(label => label.getName())
+        .forEach(labelName => labelDropdown.addItem(labelName, labelName.replace(/ /g, '-'), false));
+  section.addWidget(labelDropdown);
+
+  var analyzeButton = CardService.newTextButton()
+    .setText("Analyze Importance")
+    .setIcon(CardService.Icon.FLIGHT_DEPARTURE)
+    .setBackgroundColor("#FF3311")
+    .setOnClickAction(CardService.newAction().setFunctionName('analyzeUnreadEmails'))
+    .setTextButtonStyle(CardService.TextButtonStyle.FILLED);
+  section.addWidget(analyzeButton);
+  card.addSection(section);
+
+  return CardService.newCardBuilder()
+    .setName('hello-world-addon')
+    .addSection(section)
+    .build();
+
+}
