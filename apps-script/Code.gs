@@ -54,19 +54,19 @@ function analyzeUnreadEmails(e) {
 
   var card = CardService.newCardBuilder();
   card.setHeader(createStandardHeader());
-  createImportantEmailsCard(importantEmails, selectedLabelName);
-  card.build()
+  createImportantEmailsCard(importantEmails, card);
+  builtCard = card.build()
 
 
   return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().updateCard(card))
+    .setNavigation(CardService.newNavigation().updateCard(builtCard))
     .setNotification(CardService.newNotification()  
 
       .setText("Unread emails analyzed for importance!"))
     .build();
 }
 
-function createImportantEmailsCard(importantEmails) {
+function createImportantEmailsCard(importantEmails, card) {
   if (importantEmails.length > 0) {
     for (var i = 0; i < importantEmails.length; i++) {
       var section = CardService.newCardSection();
@@ -180,10 +180,11 @@ function callGemini(prompt) {
 
 function callGeminiWithStructuredOutput(originalMessageBody) {
   var prompt =
-    `On a scale of 1 to 5, with 1 being least important and 5 being most important, automatically assign a low importance score (1 or 2) to auto-generated emails. Rate the importance of the following email. Use this JSON reponse schema:
+    `On a scale of 1 to 5, with 1 being least important and 5 being most important, rate the importance of the following email. Automatically assign a low importance score (1 or 2) to auto-generated emails from companies. Use this JSON reponse schema:
     {
-      "importanceScore": { "type": "int" },
+      "importanceScore": [value],
     }
+    Where [value] should be the integer value of the importance score.
     Email: ` + originalMessageBody;
 
   const payload = {
@@ -255,7 +256,7 @@ function onHomepage(e) {
   // Create a dropdown for label selection
   var labelDropdown = CardService.newSelectionInput()
     .setType(CardService.SelectionInputType.DROPDOWN)
-    .setTitle("Select Label for Important Emails")
+    .setTitle("Select Label to apply to Important Emails")
     .setFieldName("selectedLabel");
 
   // Add labels to the dropdown (excluding system labels)
