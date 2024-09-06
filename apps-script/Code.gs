@@ -34,12 +34,26 @@ function analyzeUnreadEmails(e) {
     try {
       var importanceScore = callGeminiWithStructuredOutput(messageBody);
 
+      if (importanceScore === "Reached rate limit, try again later") {
+        return CardService.newActionResponseBuilder()
+          .setNotification(CardService.newNotification()
+            .setText("Reached rate limit, try again later"))
+          .build();
+      }
+
       if (importanceScore >= 4) {
         thread.addLabel(GmailApp.getUserLabelByName(selectedLabelName));
 
         // Get a summary of the email using Gemini
         var summaryPrompt = "Summarize the following email in one sentence:\n\n" + messageBody;
         var summary = callGemini(summaryPrompt);
+
+        if (summary === "Reached rate limit, try again later") {
+          return CardService.newActionResponseBuilder()
+            .setNotification(CardService.newNotification()
+              .setText("Reached rate limit, try again later"))
+            .build();
+        }
 
         importantEmails.push({
           subject: latestMessage.getSubject(),
@@ -117,6 +131,13 @@ function onGmailMessageOpen(e) {
   var summaryPrompt = "Summarize the following email in one sentence:\n\n" + originalMessageBody;
   var summary = callGemini(summaryPrompt);
 
+  if (summary === "Reached rate limit, try again later") {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification()
+        .setText("Reached rate limit, try again later"))
+      .build();
+  }
+
   // Create the card
   var card = CardService.newCardBuilder();
 
@@ -187,10 +208,20 @@ function callGemini(prompt) {
     'contentType': 'application/json',
     'payload': JSON.stringify(payload)
   };
-  const response = UrlFetchApp.fetch(geminiEndpoint, options);
-  const data = JSON.parse(response);
-  const content = data["candidates"][0]["content"]["parts"][0]["text"];
-  return content;
+
+  try {
+    const response = UrlFetchApp.fetch(geminiEndpoint, options);
+    const data = JSON.parse(response);
+    const content = data["candidates"][0]["content"]["parts"][0]["text"];
+    return content;
+  } catch (error) {
+    if (error.message.includes('returned code 429')) {
+      return "Reached rate limit, try again later";
+    } else {
+      console.error("Error calling Gemini:", error);
+      throw error;
+    }
+  }
 }
 
 function callGeminiWithStructuredOutput(originalMessageBody) {
@@ -226,17 +257,27 @@ function callGeminiWithStructuredOutput(originalMessageBody) {
 
   const response = UrlFetchApp.fetch(geminiEndpoint, options);
 
-  const data = JSON.parse(response);
+    try {
+      const response = UrlFetchApp.fetch(geminiEndpoint, options);
+      const data = JSON.parse(response);
 
-  const content = JSON.parse(data["candidates"][0]["content"]["parts"][0]["text"]);
-  const importanceScore = content.importanceScore;
+      const content = JSON.parse(data["candidates"][0]["content"]["parts"][0]["text"]);
+      const importanceScore = content.importanceScore;
 
-  if (typeof importanceScore === 'number' && importanceScore >= 1 && importanceScore <= 5) {
-    return importanceScore;
-  } else {
-    console.error("Invalid importance score from Gemini:", content);
-    throw new Error("Invalid importance score from Gemini");
-  }
+      if (typeof importanceScore === 'number' && importanceScore >= 1 && importanceScore <= 5) {
+        return importanceScore;
+      } else {
+        console.error("Invalid importance score from Gemini:", content);
+        throw new Error("Invalid importance score from Gemini");
+      }
+    } catch (error) {
+      if (error.message.includes('returned code 429')) {
+        return "Reached rate limit, try again later";
+      } else {
+        console.error("Error calling Gemini:", error);
+        throw error;
+      }
+    }
 }
 
 function generateResponseHomepage(e) {
@@ -254,6 +295,13 @@ var prompt = "Please generate a concise and professional response to the followi
   * If you are **unable to confidently determine the correct name**, omit the signature completely. \
   \n\n**Compose the response without including the email subject. DO NOT end the response with '[Your Name]'**.";
   var geminiResponse = callGemini(prompt);
+
+  if (geminiResponse === "Reached rate limit, try again later") {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification()
+        .setText("Reached rate limit, try again later"))
+      .build();
+  }
 
   message.createDraftReplyAll(geminiResponse);
 
@@ -280,6 +328,13 @@ function generateResponse(e) {
     * If you are **unable to confidently determine the correct name**, omit the signature completely. \
     \n\n**Compose the response without including the email subject. DO NOT end the response with '[Your Name]'**.";
   var geminiResponse = callGemini(prompt);
+
+  if (geminiResponse === "Reached rate limit, try again later") {
+          return CardService.newActionResponseBuilder()
+            .setNotification(CardService.newNotification()
+              .setText("Reached rate limit, try again later"))
+            .build();
+        }
 
   message.createDraftReplyAll(geminiResponse);
 
