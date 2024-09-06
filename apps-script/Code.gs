@@ -1,7 +1,7 @@
 // Constants & setup (adjust based on your Gemini API details)
 const properties = PropertiesService.getScriptProperties().getProperties();
-const geminiApiKey = properties['GOOGLE_API_KEY'];
-const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
+const geminiEndpoint = `https://europe-west9-aiplatform.googleapis.com/v1/projects/your-mail-buddy/locations/europe-west9/publishers/google/models/gemini-1.5-flash:generateContent`
+const header = `Bearer ${properties['GCLOUD_ACCESS_TOKEN']}`
 
 function createStandardHeader() {
   return CardService.newCardHeader()
@@ -191,22 +191,25 @@ function onGmailMessageOpen(e) {
 }
 
 function callGemini(prompt) {
+
   const payload = {
-    "contents": [
+  "contents": {
+    "role": "user",
+    "parts": [
       {
-        "parts": [
-          {
-            "text": prompt
-          }
-        ]
+        "text": prompt
       }
     ]
-  };
+  }
+}
 
   const options = {
     'method': 'post',
     'contentType': 'application/json',
-    'payload': JSON.stringify(payload)
+    'payload': JSON.stringify(payload),
+    'headers': {
+      'Authorization': header
+    }
   };
 
   try {
@@ -235,27 +238,27 @@ function callGeminiWithStructuredOutput(originalMessageBody) {
     Email: ` + originalMessageBody;
 
   const payload = {
-    "contents": [
-      {
-        "parts": [
-          {
-            "text": prompt
-          }
-        ]
-      }
-    ],
+    "contents": {
+      "role": "user",
+      "parts": [
+        {
+          "text": prompt
+        }
+      ]
+    },
     "generationConfig": {
-      "responseMimeType": "application/json"
-    }
-  };
+        "responseMimeType": "application/json"
+      }
+  }
 
   const options = {
     'method': 'post',
     'contentType': 'application/json',
-    'payload': JSON.stringify(payload)
+    'payload': JSON.stringify(payload),
+    'headers': {
+      'Authorization': header
+    }
   };
-
-  const response = UrlFetchApp.fetch(geminiEndpoint, options);
 
     try {
       const response = UrlFetchApp.fetch(geminiEndpoint, options);
@@ -264,7 +267,13 @@ function callGeminiWithStructuredOutput(originalMessageBody) {
       const content = JSON.parse(data["candidates"][0]["content"]["parts"][0]["text"]);
       const importanceScore = content.importanceScore;
 
-      if (typeof importanceScore === 'number' && importanceScore >= 1 && importanceScore <= 5) {
+      if (typeof input === 'string') {
+        importanceScore = parseInt(input, 10);
+      }
+
+      console.log(importanceScore);
+
+      if (importanceScore >= 1 && importanceScore <= 5) {
         return importanceScore;
       } else {
         console.error("Invalid importance score from Gemini:", content);
@@ -272,6 +281,7 @@ function callGeminiWithStructuredOutput(originalMessageBody) {
       }
     } catch (error) {
       if (error.message.includes('returned code 429')) {
+        console.log(error);
         return "Reached rate limit, try again later";
       } else {
         console.error("Error calling Gemini:", error);
