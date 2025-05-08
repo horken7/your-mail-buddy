@@ -50,10 +50,12 @@ with st.expander("Info", icon=":material/info:"):
 st.sidebar.header("Settings")
 
 # Checkbox for using example connection
-use_example = st.sidebar.checkbox("Use example connection", value=False)
+#use_example = st.sidebar.checkbox("Use example connection", value=False)
 
 # Configuration parameters
-if use_example:
+if False:
+# if use_example:
+# disable the example connection
     IMAP_SERVER = st.secrets["imap_server"]
     EMAIL_ACCOUNT = st.secrets["email_account"]
     PASSWORD = st.secrets["email_password"]
